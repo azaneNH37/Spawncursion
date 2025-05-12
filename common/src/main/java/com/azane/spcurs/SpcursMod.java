@@ -1,6 +1,7 @@
 package com.azane.spcurs;
 
-public final class ExampleMod {
+public final class SpcursMod
+{
     public static final String MOD_ID = "spawncursion";
 
     public static void init() {
