@@ -13,6 +13,7 @@ allprojects {
     version = rootProject.mod_version
 
     repositories {
+        mavenCentral()
         maven {
             name = 'ParchmentMC'
             url = 'https://maven.parchmentmc.org'
@@ -43,6 +44,8 @@ subprojects {
     }
 
     dependencies {
+        compileOnly 'org.projectlombok:lombok:1.18.30'
+        annotationProcessor 'org.projectlombok:lombok:1.18.30'
         minecraft "net.minecraft:minecraft:$rootProject.minecraft_version"
         //mappings loom.officialMojangMappings()
         mappings loom.layered() {

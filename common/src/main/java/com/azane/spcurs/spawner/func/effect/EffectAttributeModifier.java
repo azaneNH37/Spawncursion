@@ -22,28 +22,37 @@ public class EffectAttributeModifier extends SpcursFunc
 
     @Expose
     @SerializedName("attribute")
-    private ResourceLocation attr;
+    private ResourceLocation attr = null;
     @Expose
     @SerializedName("operation")
-    private String op;
+    private String op = null;
     @Expose
     @SerializedName("value")
-    private double val;
+    private double val = 0;
 
     private Attribute attribute = null;
     private AttributeModifier modifier = null;
 
     public EffectAttributeModifier(){}
 
+    private boolean checkIncomplete()
+    {
+        return attr == null || op == null || val == 0;
+    }
+
     public void onEntityCreate(ServerLevel level, BlockPos blockPos, LivingEntity entity)
     {
         if(attribute == null)
         {
+            //TODO: Maybe we need to throw the warning but need to be careful with mounts of logs
+            if(checkIncomplete())
+                return;
             attribute = RegistryAccessHelper.gainRealtimeAccess().registryOrThrow(Registries.ATTRIBUTE).get(attr);
             if(attribute == null)
                 attribute = DEFAULT_ATTR;
             UUID uuid = UUID.randomUUID();
             //TODO: We need to introduce other types of Operations! Well, interesting tasks. Already have basic ideas.
+            //TODO: we share the attr_modifier among all the entities created. Could be dangerous,Umh? Need Observation.
             modifier = new AttributeModifier(uuid,uuid.toString(),val,
                switch (op)
                {

@@ -16,4 +16,5 @@ public interface ISpcursPlugin
 
     default void onEntityCreate(ServerLevel level, BlockPos blockPos, LivingEntity entity){}
 
+    default void onActiveFixedTick(ServerLevel level,BlockPos blockPos,long fixedTick){}
 }

@@ -5,18 +5,23 @@ import com.azane.spcurs.lib.FileNameExtractHelper;
 import com.azane.spcurs.lib.json.IJsonStorage;
 import com.azane.spcurs.lib.json.JsonSerializer;
 import com.azane.spcurs.spawner.func.effect.EffectAttributeModifier;
+import com.azane.spcurs.spawner.func.effect.EffectEffectAdder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.ibm.icu.impl.Pair;
+import lombok.Getter;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.GsonHelper;
 
 import java.lang.reflect.Type;
 import java.util.*;
 
+/**
+ * Class used for the load and storage of all the spawner configs from the jsons in datapacks
+ */
 public class SpcursSpawner
 {
-    private static final SpcursSpawner.SpawnerStorage STORAGE = new SpawnerStorage();
+    public static final SpcursSpawner.SpawnerStorage STORAGE = new SpawnerStorage();
 
     private final ResourceLocation rl;
     private ResourceLocation parent;
@@ -25,13 +30,17 @@ public class SpcursSpawner
     private int replaceable;
     private JsonArray[] raw_array;
 
+    @Getter
     private final List<ISpcursPlugin> globalEffects = new ArrayList<>();
+    @Getter
+    private final List<SpcursCreature> creatures = new ArrayList<>();
+    @Getter
+    private final List<ISpcursPlugin> functions = new ArrayList<>();
 
     enum BuildStats{
         RAW,
         COMPLETE,
-        FAIL,
-        BROKEN
+        FAIL
     }
     enum RawArrayType{
         EFFECT(0,"effect"),
@@ -55,6 +64,7 @@ public class SpcursSpawner
         public SpawnerStorage()
         {
             funcMap.put(new ResourceLocation("spcurs:attribute"), EffectAttributeModifier.class);
+            funcMap.put(new ResourceLocation("spcurs:effect"), EffectEffectAdder.class);
         }
         @Override
         public void setData(Map<ResourceLocation, JsonObject> data)
@@ -86,8 +96,10 @@ public class SpcursSpawner
         boolean b = GsonHelper.getAsBoolean(obj,"replaceable",true);
         return Optional.of(Pair.of(b,obj2));
     }
-    public static List<ISpcursPlugin> buildEffects(JsonArray array)
+    public static List<ISpcursPlugin> buildFuncs(JsonArray array)
     {
+        if(array == null)
+            return new ArrayList<>();
         List<JsonObject> jobjs = JsonSerializer.GSON_NORMAL.fromJson(array,JsonSerializer.LIST_JOBJ);
         List<ISpcursPlugin> res = new ArrayList<>();
         jobjs.forEach((obj -> {
@@ -103,6 +115,18 @@ public class SpcursSpawner
         }));
         return res;
     }
+    public static List<SpcursCreature> buildCreatures(JsonArray array)
+    {
+        if(array == null)
+            return new ArrayList<>();
+        List<JsonObject> jobjs = JsonSerializer.GSON_NORMAL.fromJson(array,JsonSerializer.LIST_JOBJ);
+        List<SpcursCreature> res = new ArrayList<>();
+        jobjs.forEach(obj->{
+            SpcursCreature cls = JsonSerializer.GSON_NORMAL.fromJson(obj, SpcursCreature.class);
+            res.add(cls);
+        });
+        return res;
+    }
     private static SpcursSpawner create(ResourceLocation rl,JsonObject jobj)
     {
         SpcursSpawner tmp = new SpcursSpawner(rl);
@@ -116,25 +140,71 @@ public class SpcursSpawner
         }));
         return tmp;
     }
-    private Optional<SpcursSpawner> buildParent(ResourceLocation parent,Set<ResourceLocation> familyTree)
+    private boolean inherit(SpcursSpawner parent)
     {
-        SpcursSpawner father = STORAGE.getSpcurs(parent).orElse(null);
-        return Optional.empty();
+        if(parent == null)
+        {
+            this.stats = BuildStats.FAIL;
+            return false;
+        }
+        else {
+            if((this.replaceable & (1<<RawArrayType.EFFECT.id)) == 0)
+                this.globalEffects.addAll(parent.globalEffects);
+            if((this.replaceable & (1<<RawArrayType.CREATURE.id)) == 0)
+                this.creatures.addAll(parent.creatures);
+            if((this.replaceable & (1<<RawArrayType.FUNCTION.id)) == 0)
+                this.functions.addAll(parent.functions);
+        }
+        return true;
+    }
+    private void localBuild()
+    {
+        this.globalEffects.addAll(buildFuncs(raw_array[RawArrayType.EFFECT.id]));
+        this.creatures.addAll(buildCreatures(raw_array[RawArrayType.CREATURE.id]));
+        this.functions.addAll(buildFuncs(raw_array[RawArrayType.FUNCTION.id]));
+    }
+    private SpcursSpawner buildEntry(Set<ResourceLocation> familyTree)
+    {
+        if(this.stats == BuildStats.COMPLETE)
+            return this;
+        else if(this.stats == BuildStats.FAIL)
+            return null;
+
+        if(this.parent != null)
+        {
+            if(familyTree.contains(this.parent))
+            {
+                this.stats = BuildStats.FAIL;
+                return null;
+            }
+            familyTree.add(this.parent);
+            SpcursSpawner father = STORAGE.getSpcurs(this.parent).orElse(null);
+            if(father == null)
+            {
+                this.stats = BuildStats.FAIL;
+                return null;
+            }
+            father = father.buildEntry(familyTree);
+            if(!this.inherit(father))
+            {
+                this.stats = BuildStats.FAIL;
+                return null;
+            }
+        }
+        localBuild();
+        this.stats = BuildStats.COMPLETE;
+        return this;
     }
     public void build()
     {
         if(this.stats != BuildStats.RAW)
             return;
-
+        buildEntry(new HashSet<>(Set.of(this.rl)));
     }
-
-    public static SpawnerStorage getStorage()
+    public Optional<SpcursSpawner> buildAndGet()
     {
-        return STORAGE;
+        build();
+        return this.stats == BuildStats.COMPLETE ? Optional.of(this) : Optional.empty();
     }
 
-    public List<ISpcursPlugin> getGlobalEffects()
-    {
-        return globalEffects;
-    }
 }
